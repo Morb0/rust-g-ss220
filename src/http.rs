@@ -95,53 +95,54 @@ fn construct_request(
     options: &str,
 ) -> Result<RequestPrep> {
     HTTP_CLIENT.with(|cell| {
-	let borrow = cell.borrow_mut();
-	match &*borrow {
-		Some(client) => {
-			let mut req = match method {
-				"post" => client.post(url),
-				"put" => client.put(url),
-				"patch" => client.patch(url),
-				"delete" => client.delete(url),
-				"head" => client.head(url),
-				_ => client.get(url),
-			};
+		let borrow = cell.borrow_mut();
+		match &*borrow {
+			Some(client) => {
+				let mut req = match method {
+					"post" => client.post(url),
+					"put" => client.put(url),
+					"patch" => client.patch(url),
+					"delete" => client.delete(url),
+					"head" => client.head(url),
+					_ => client.get(url),
+				};
 
-			if !body.is_empty() {
-				req = req.body(body.to_owned());
-			}
-
-			if !headers.is_empty() {
-				let headers: BTreeMap<&str, &str> = serde_json::from_str(headers)?;
-				for (key, value) in headers {
-					req = req.header(key, value);
+				if !body.is_empty() {
+					req = req.body(body.to_owned());
 				}
-			}
 
-			let mut output_filename = None;
-			if !options.is_empty() {
-				let options: RequestOptions = serde_json::from_str(options)?;
-				output_filename = options.output_filename;
-				if let Some(fname) = options.body_filename {
-					req = req.body(std::fs::File::open(fname)?);
+				if !headers.is_empty() {
+					let headers: BTreeMap<&str, &str> = serde_json::from_str(headers)?;
+					for (key, value) in headers {
+						req = req.header(key, value);
+					}
 				}
+
+				let mut output_filename = None;
+				if !options.is_empty() {
+					let options: RequestOptions = serde_json::from_str(options)?;
+					output_filename = options.output_filename;
+					if let Some(fname) = options.body_filename {
+						req = req.body(std::fs::File::open(fname)?);
+					}
+				}
+
+				Ok(RequestPrep {
+					req,
+					output_filename,
+				})
 			}
 
-			Ok(RequestPrep {
-				req,
-				output_filename,
-			})
-		}
-
-		// If we got here we royally fucked up
-		None => {
-			let client = setup_http_client();
-			let req = client.get("");
-			let output_filename = None;
-			Ok(RequestPrep {
-				req,
-				output_filename,
-			})
+			// If we got here we royally fucked up
+			None => {
+				let client = setup_http_client();
+				let req = client.get("");
+				let output_filename = None;
+				Ok(RequestPrep {
+					req,
+					output_filename,
+				})
+			}
 		}
 	}
 }
