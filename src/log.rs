@@ -14,7 +14,7 @@ thread_local! {
     static FILE_MAP: RefCell<HashMap<OsString, File>> = RefCell::new(HashMap::new());
 }
 
-byond_fn!(fn log_write(path, data, ...rest) {
+byond_fn!(fn log_write(path, data) {
     FILE_MAP.with(|cell| -> Result<()> {
         // open file
         let mut map = cell.borrow_mut();
@@ -24,21 +24,11 @@ byond_fn!(fn log_write(path, data, ...rest) {
             Entry::Vacant(elem) => elem.insert(open(path)?),
         };
 
-        if rest.first().map(|x| &**x) == Some("false") {
-            // Write the data to the file with no accoutrements.
-            write!(file, "{data}")?;
-        } else {
-            // write first line, timestamped
-            let mut iter = data.split('\n');
-            if let Some(line) = iter.next() {
-                writeln!(file, "[{}] {}", Utc::now().format("%F %T%.3f"), line)?;
-            }
-
-            // write remaining lines
-            for line in iter {
-                writeln!(file, " - {line}")?;
-            }
-        }
+		// write all lines timestamped
+        let iter = data.split('\n');
+        for line in iter {
+            write!(file, "[{}] {}\n", Utc::now().format("%FT%T"), line)?;
+		}
 
         Ok(())
     }).err()

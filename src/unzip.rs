@@ -11,8 +11,13 @@ struct UnzipPrep {
 }
 
 fn construct_unzip(url: &str, unzip_directory: &str) -> UnzipPrep {
-    let req = HTTP_CLIENT.get(url);
+    let mut reqh = None;
+    HTTP_CLIENT.with(|client| {
+        reqh = Some(client.borrow_mut().as_ref().unwrap().get(url));
+    });
+ 
     let dir_copy = unzip_directory.to_string();
+    let req = reqh.unwrap();
 
     UnzipPrep {
         req,

@@ -1,8 +1,8 @@
 use crate::{error::Result, jobs};
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
+use std::cell::RefCell;
 
 // ----------------------------------------------------------------------------
 // Interface
@@ -75,7 +75,9 @@ fn setup_http_client() -> reqwest::blocking::Client {
     Client::builder().default_headers(headers).build().unwrap()
 }
 
-pub static HTTP_CLIENT: Lazy<reqwest::blocking::Client> = Lazy::new(setup_http_client);
+thread_local! {
+    pub static HTTP_CLIENT: RefCell<Option<reqwest::blocking::Client>> = RefCell::new(Some(setup_http_client()));
+}
 
 // ----------------------------------------------------------------------------
 // Request construction and execution
@@ -92,39 +94,56 @@ fn construct_request(
     headers: &str,
     options: &str,
 ) -> Result<RequestPrep> {
-    let mut req = match method {
-        "post" => HTTP_CLIENT.post(url),
-        "put" => HTTP_CLIENT.put(url),
-        "patch" => HTTP_CLIENT.patch(url),
-        "delete" => HTTP_CLIENT.delete(url),
-        "head" => HTTP_CLIENT.head(url),
-        _ => HTTP_CLIENT.get(url),
-    };
+    HTTP_CLIENT.with(|cell| {
+	let borrow = cell.borrow_mut();
+	match &*borrow {
+		Some(client) => {
+			let mut req = match method {
+				"post" => client.post(url),
+				"put" => client.put(url),
+				"patch" => client.patch(url),
+				"delete" => client.delete(url),
+				"head" => client.head(url),
+				_ => client.get(url),
+			};
 
-    if !body.is_empty() {
-        req = req.body(body.to_owned());
-    }
+			if !body.is_empty() {
+				req = req.body(body.to_owned());
+			}
 
-    if !headers.is_empty() {
-        let headers: BTreeMap<&str, &str> = serde_json::from_str(headers)?;
-        for (key, value) in headers {
-            req = req.header(key, value);
-        }
-    }
+			if !headers.is_empty() {
+				let headers: BTreeMap<&str, &str> = serde_json::from_str(headers)?;
+				for (key, value) in headers {
+					req = req.header(key, value);
+				}
+			}
 
-    let mut output_filename = None;
-    if !options.is_empty() {
-        let options: RequestOptions = serde_json::from_str(options)?;
-        output_filename = options.output_filename;
-        if let Some(fname) = options.body_filename {
-            req = req.body(std::fs::File::open(fname)?);
-        }
-    }
+			let mut output_filename = None;
+			if !options.is_empty() {
+				let options: RequestOptions = serde_json::from_str(options)?;
+				output_filename = options.output_filename;
+				if let Some(fname) = options.body_filename {
+					req = req.body(std::fs::File::open(fname)?);
+				}
+			}
 
-    Ok(RequestPrep {
-        req,
-        output_filename,
-    })
+			Ok(RequestPrep {
+				req,
+				output_filename,
+			})
+		}
+
+		// If we got here we royally fucked up
+		None => {
+			let client = setup_http_client();
+			let req = client.get("");
+			let output_filename = None;
+			Ok(RequestPrep {
+				req,
+				output_filename,
+			})
+		}
+	}
 }
 
 fn submit_request(prep: RequestPrep) -> Result<String> {
@@ -155,6 +174,20 @@ fn submit_request(prep: RequestPrep) -> Result<String> {
 
     Ok(serde_json::to_string(&resp)?)
 }
+
+byond_fn!(fn start_http_client() {
+    HTTP_CLIENT.with(|cell| {
+        cell.replace(Some(setup_http_client()))
+    });
+    Some("")
+});
+
+byond_fn!(fn shutdown_http_client() {
+    HTTP_CLIENT.with(|cell| {
+        cell.replace(None)
+    });
+    Some("")
+});
 
 byond_fn!(
     fn start_http_client() {
