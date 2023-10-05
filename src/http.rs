@@ -189,18 +189,3 @@ byond_fn!(fn shutdown_http_client() {
     });
     Some("")
 });
-
-byond_fn!(
-    fn start_http_client() {
-        Some("")
-    }
-);
-
-use jobs::shutdown_workers;
-
-byond_fn!(
-    fn shutdown_http_client() {
-        shutdown_workers();
-        Some("")
-    }
-);
