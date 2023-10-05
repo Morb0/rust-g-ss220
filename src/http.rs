@@ -144,7 +144,7 @@ fn construct_request(
 				})
 			}
 		}
-	});
+	})
 }
 
 fn submit_request(prep: RequestPrep) -> Result<String> {
